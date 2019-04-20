@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "termlib",
+    "runtime",
+    "whirl_cli",
+]

@@ -1,0 +1,13 @@
+[package]
+name = "whirl_cli"
+version = "0.1.0"
+authors = ["Hans Elias B. Josephsen <me@hansihe.com>"]
+edition = "2018"
+
+[dependencies]
+core_erlang_compiler = { path = "../../core_erlang_3/compiler/" }
+eir = { path = "../../core_erlang_3/eir/" }
+gen_nif = { path = "../../core_erlang_3/gen_nif/" }
+cps_transform = { path = "../../core_erlang_3/cps_transform/" }
+
+clap = "2.33.0"

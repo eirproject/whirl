@@ -1,0 +1,10 @@
+target/
+*.ll
+*.core
+*.eir
+node_modules/
+runtime/out/
+*.a
+*.s
+*.o
+*.bc
