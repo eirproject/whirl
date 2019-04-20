@@ -45,35 +45,66 @@ pub fn init() {
     unsafe { whirlc_module_init_testing() };
 
     let vm = unsafe { VM_INST.as_mut() }.unwrap();
-    let ident = FunctionIdent {
-        module: "testing".to_string(),
-        name: "hello_world".to_string(),
-        arity: 1,
-    };
-    let fun_ptr = vm.funs[&ident];
-    let transmuted = unsafe { std::mem::transmute::<_, extern "C" fn(*const u8, u64, Term, Term, Term)>(fun_ptr) };
 
     vm.pcbs.push(Some(PCB::new()));
     unsafe { CURR_PROC = 0 };
 
-    let test: u8 = 0;
-    let hi_atom = vm.atoms.get_atom("hi");
-    console_log!("Hi atom: {:?}", hi_atom);
-
     let cont_ok_ptr = bail_ok_cont as extern "C" fn(*const u8, Term, Term);
     let bail_cont_ok_term = Term::new_fun(0, unsafe { std::mem::transmute::<_, extern "C" fn()>(cont_ok_ptr) });
 
-    let ret = wrap_catch_bail(&mut || {
-        // NOTE: Be EXTREMELY careful about allocations here.
-        // They will leak if you don't free them/store them
-        // and a bail is thrown!
-        transmuted(&test, 0, bail_cont_ok_term, bail_cont_ok_term, hi_atom);
-        unreachable!();
-    });
-    assert!(!ret);
+    let cont_err_ptr = bail_err_cont as extern "C" fn(*const u8, Term, Term);
+    let bail_cont_err_term = Term::new_fun(0, unsafe { std::mem::transmute::<_, extern "C" fn()>(cont_err_ptr) });
 
-    let mut term_fmt = String::new();
-    console_log!("Bail: {:?}", unsafe { &BAIL_REASON });
+    {
+        let ident = FunctionIdent {
+            module: "testing".to_string(),
+            name: "hello_world".to_string(),
+            arity: 1,
+        };
+        let fun_ptr = vm.funs[&ident];
+        let transmuted = unsafe { std::mem::transmute::<_, extern "C" fn(*const u8, u64, Term, Term, Term)>(fun_ptr) };
+
+        let test: u8 = 0;
+        let hi_atom = vm.atoms.get_atom("hi");
+        console_log!("Hi atom: {:?}", hi_atom);
+
+        let ret = wrap_catch_bail(&mut || {
+            // NOTE: Be EXTREMELY careful about allocations here.
+            // They will leak if you don't free them/store them
+            // and a bail is thrown!
+            transmuted(&test, 0, bail_cont_ok_term, bail_cont_err_term, hi_atom);
+            unreachable!();
+        });
+        assert!(!ret);
+
+        let mut term_fmt = String::new();
+        console_log!("Bail: {:?}", unsafe { &BAIL_REASON });
+    }
+
+    {
+        let ident = FunctionIdent {
+            module: "testing".to_string(),
+            name: "fib".to_string(),
+            arity: 1,
+        };
+        let fun_ptr = vm.funs[&ident];
+        let transmuted = unsafe { std::mem::transmute::<_, extern "C" fn(*const u8, u64, Term, Term, Term)>(fun_ptr) };
+
+        let test: u8 = 0;
+        let five_num = Term::new_smallint(5);
+
+        let ret = wrap_catch_bail(&mut || {
+            // NOTE: Be EXTREMELY careful about allocations here.
+            // They will leak if you don't free them/store them
+            // and a bail is thrown!
+            transmuted(&test, 0, bail_cont_ok_term, bail_cont_err_term, five_num);
+            unreachable!();
+        });
+        assert!(!ret);
+
+        let mut term_fmt = String::new();
+        console_log!("Bail: {:?}", unsafe { &BAIL_REASON });
+    }
 
     console_log!("{:?}", vm.atoms.idx_to_name);
     
@@ -233,6 +264,13 @@ impl Term {
     pub fn new_tuple_header(num: u32) -> Term {
         Term(((num as u64) << 3) | TAG_PRIMARY_TUPLE)
     }
+    pub fn get_tuple_header(self) -> Option<u32> {
+        if self.0 & TAG_PRIMARY_MASK == TAG_PRIMARY_TUPLE {
+            Some((self.0 >> 3) as u32)
+        } else {
+            None
+        }
+    }
 
     pub fn new_boxed(ptr: *const u64) -> Term {
         assert!((unsafe { std::mem::transmute::<_, u32>(ptr) } & 0b111) == 0);
@@ -283,14 +321,15 @@ fn format_term(term_ptr: *const Term, buf: &mut String) {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn whrt_new_smallint(num: i64) -> Term { Term::new_smallint(num) }
+//#[no_mangle]
+//pub extern "C" fn whrt_new_smallint(num: i64) -> Term { Term::new_smallint(num) }
 
 #[no_mangle]
 pub extern "C" fn whirlrt_term_eq(proc_env: *const u8, lhs: Term, rhs: Term) -> bool {
     console_log!("Eq: {:?} ({:?}) {:?} ({:?})", lhs, lhs.term_tag(), rhs, rhs.term_tag());
     match (lhs.term_tag(), rhs.term_tag()) {
         (TermTag::Atom, TermTag::Atom) => lhs.0 == rhs.0,
+        (TermTag::SmallInt, TermTag::SmallInt) => lhs.0 == rhs.0,
         _ => unimplemented!(),
     }
 }
@@ -298,7 +337,7 @@ pub extern "C" fn whirlrt_term_eq(proc_env: *const u8, lhs: Term, rhs: Term) -> 
 #[no_mangle]
 pub extern "C" fn whirlrt_term_make_tuple(proc_env: *const u8, len: u32, terms: *const Term) -> Term {
     let terms_slice = unsafe { std::slice::from_raw_parts(terms, len as usize) };
-    console_log!("MakeTuple {:?}", terms_slice);
+    //console_log!("MakeTuple {:?}", terms_slice);
 
     let vm = unsafe { VM_INST.as_mut() }.unwrap();
     let pcb = vm.pcbs[unsafe { CURR_PROC }].as_mut().unwrap();
@@ -315,6 +354,7 @@ pub extern "C" fn whirlrt_term_make_tuple(proc_env: *const u8, len: u32, terms: 
 
 #[no_mangle]
 pub extern "C" fn whirlrt_call_cont(proc_env: *const u8, cont: Term, ret: Term) {
+    console_log!("CallCont: {:?} ({:?}) ret: {:?} ({:?})", cont, cont.term_tag(), ret, ret.term_tag());
     assert!(cont.0 != 0);
     let fun;
     match cont.term_tag() {
@@ -328,7 +368,7 @@ pub extern "C" fn whirlrt_call_cont(proc_env: *const u8, cont: Term, ret: Term) 
             let base_term = Term(unsafe { *term_ptr });
             assert!(base_term.term_tag() == TermTag::Fun);
 
-            let (_env_size, fun_ptr) = cont.get_fun().unwrap();
+            let (_env_size, fun_ptr) = base_term.get_fun().unwrap();
             fun = fun_ptr;
         },
         _ => unreachable!(),
@@ -366,6 +406,110 @@ pub extern "C" fn whirlrt_module_register_function(module_len: u32, module_data:
 
     vm.funs.insert(ident, fun_ptr);
 }
+
+#[no_mangle]
+pub extern "C" fn whirlrt_term_unpack_closure_env(proc_env: *const u8, env: Term, len: u32, out: *mut Term) {
+    if len == 0 { return; }
+    let inner_ptr = env.get_boxed().unwrap() as *const Term;
+    let inner_head = unsafe { *inner_ptr };
+    let (num_free, _fun_ptr) = inner_head.get_fun().unwrap();
+    assert!(num_free == len);
+    for n in 0..len {
+        unsafe { *out.offset(n as isize) = *inner_ptr.offset(n as isize + 1) };
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn whirlrt_temp_hacky_transmute_tup_to_fun_env(proc_env: *const u8, env: Term, fun_ptr: extern "C" fn()) {
+    let inner_ptr = env.get_boxed().unwrap() as *const Term;
+    let inner_head = unsafe { *inner_ptr };
+    let tup_len = inner_head.get_tuple_header().unwrap();
+    let fun_term = Term::new_fun(tup_len, fun_ptr);
+    unsafe { *(inner_ptr as *mut Term) = fun_term };
+}
+
+#[no_mangle]
+pub extern "C" fn whirlrt_term_make_fun(proc_env: *const u8, fun_ptr: extern "C" fn()) -> Term {
+    Term::new_fun(0, fun_ptr)
+}
+
+#[no_mangle]
+pub extern "C" fn whirlrt_term_get_fun(proc_env: *const u8, term: Term) -> extern "C" fn() {
+    let (cnt, fun) = term.get_fun().unwrap();
+    fun
+}
+
+#[no_mangle]
+pub extern "C" fn whirlrt_term_make_smallint(proc_env: *const u8, int: i64) -> Term {
+    Term::new_smallint(int)
+}
+
+#[no_mangle]
+pub extern "C" fn GNIF6_erlang2__g2_n_n(proc_env: *const u8, env: Term, 
+                                        ok_cont: Term, err_cont: Term,
+                                        lhs: Term, rhs: Term) {
+    let vm = unsafe { VM_INST.as_mut() }.unwrap();
+    let ret = match (lhs.term_tag(), rhs.term_tag()) {
+        (TermTag::SmallInt, TermTag::SmallInt) => {
+            let lhs_int = lhs.get_smallint().unwrap();
+            let rhs_int = rhs.get_smallint().unwrap();
+            if lhs_int > rhs_int {
+                vm.atoms.get_atom("true")
+            } else {
+                vm.atoms.get_atom("false")
+            }
+        }
+        _ => unimplemented!(),
+    };
+    whirlrt_call_cont(proc_env, ok_cont, ret);
+}
+
+#[no_mangle]
+pub extern "C" fn GNIF6_erlang2__m2_n_n(proc_env: *const u8, env: Term, 
+                                        ok_cont: Term, err_cont: Term,
+                                        lhs: Term, rhs: Term) {
+    // TODO handle errors properly
+    let ret = match (lhs.term_tag(), rhs.term_tag()) {
+        (TermTag::SmallInt, TermTag::SmallInt) => {
+            let lhs_int = lhs.get_smallint().unwrap();
+            let rhs_int = rhs.get_smallint().unwrap();
+            Term::new_smallint(lhs_int - rhs_int)
+        },
+        _ => unimplemented!(),
+    };
+    console_log!("-ret ({:?} - {:?}) -> {:?}", lhs, rhs, ret);
+    whirlrt_call_cont(proc_env, ok_cont, ret);
+}
+
+// erlang:'+'/2
+#[no_mangle]
+pub extern "C" fn GNIF6_erlang2__p2_n_n(proc_env: *const u8, env: Term, 
+                                        ok_cont: Term, err_cont: Term,
+                                        lhs: Term, rhs: Term) {
+    // TODO handle errors properly
+    let ret = match (lhs.term_tag(), rhs.term_tag()) {
+        (TermTag::SmallInt, TermTag::SmallInt) => {
+            let lhs_int = lhs.get_smallint().unwrap();
+            let rhs_int = rhs.get_smallint().unwrap();
+            Term::new_smallint(lhs_int + rhs_int)
+        },
+        _ => unimplemented!(),
+    };
+    console_log!("+ret ({:?} + {:?}) -> {:?}", lhs, rhs, ret);
+    whirlrt_call_cont(proc_env, ok_cont, ret);
+}
+    
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -3,8 +3,9 @@ target/
 *.core
 *.eir
 node_modules/
-runtime/out/
+runtime/out/*
 *.a
 *.s
 *.o
 *.bc
+*.wasm
