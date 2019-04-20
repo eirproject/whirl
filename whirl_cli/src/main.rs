@@ -40,6 +40,7 @@ fn main() {
             );
         context.build_function(&result, "hello_world", 1);
         context.build_function(&result, "fib", 1);
+        context.build_function(&result, "fib_response", 2);
         context.finalize();
         context.write_bitcode(&bc_file_path);
 
