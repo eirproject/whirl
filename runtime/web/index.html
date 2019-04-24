@@ -1,7 +1,31 @@
 <html>
     <head>
+<style type="text/css">
+    code { white-space: pre; }
+    </style>
     </head>
     <body>
         <script src="bootstrap.js"></script>
+
+        <button id="incr">+</button>
+        <button id="decr">-</button>
+        <div id="display"></div>
+
+        </br>Erlang code:
+        <code>
+counter_server(Counter) ->
+    receive
+        {get_counter, Pid} ->
+            Pid ! Counter,
+            counter_server(Counter);
+        increment ->
+            counter_server(Counter + 1);
+        decrement ->
+            counter_server(Counter - 1);
+        exit ->
+            false
+    end.
+        </code>
+
     </body>
 </html>

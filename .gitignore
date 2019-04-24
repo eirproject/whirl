@@ -9,3 +9,5 @@ runtime/out/*
 *.o
 *.bc
 *.wasm
+runtime/web/dist/
+*.log

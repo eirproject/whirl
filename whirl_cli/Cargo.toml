@@ -11,3 +11,5 @@ gen_nif = { path = "../../core_erlang_3/gen_nif/" }
 cps_transform = { path = "../../core_erlang_3/cps_transform/" }
 
 clap = "2.33.0"
+llvm-sys = "70"
+inkwell = { git = "https://github.com/TheDan64/inkwell", branch = "llvm7-0" }
